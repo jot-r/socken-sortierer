@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f2">
+  <title>Socken-Sortierer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #202820;
+      background: #f6f7f2;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    button, .upload-label { font: inherit; }
+    .page { width: min(100% - 32px, 620px); margin: 0 auto; padding: 28px 0 40px; }
+    header { margin-bottom: 24px; }
+    .eyebrow { margin: 0 0 6px; color: #58705c; font-size: .78rem; font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 8vw, 2.8rem); letter-spacing: -.05em; line-height: 1.05; }
+    .intro { margin: 12px 0 0; color: #59635a; line-height: 1.55; }
+    .card { overflow: hidden; border: 1px solid #e3e7df; border-radius: 22px; background: #fff; box-shadow: 0 10px 32px #2636240a; }
+    .viewer { position: relative; display: grid; min-height: 310px; aspect-ratio: 4 / 3; place-items: center; overflow: hidden; background: #e9ede6; }
+    .viewer video, .viewer img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+    .viewer img[hidden], .viewer video[hidden] { display: none; }
+    .placeholder { max-width: 260px; padding: 24px; color: #647064; text-align: center; }
+    .placeholder-icon { display: block; margin-bottom: 12px; font-size: 2.5rem; }
+    .placeholder p { margin: 0; line-height: 1.5; }
+    .camera-badge { position: absolute; z-index: 1; top: 14px; left: 14px; padding: 7px 10px; border: 1px solid #ffffffa6; border-radius: 999px; background: #ffffffdf; color: #344536; font-size: .78rem; font-weight: 650; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; }
+    .button, .upload-label { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 0; border-radius: 13px; cursor: pointer; font-weight: 700; text-align: center; transition: transform .15s, background .15s; }
+    .button:active, .upload-label:active { transform: scale(.98); }
+    .button-primary { background: #315d3b; color: #fff; }
+    .button-primary:hover { background: #264b30; }
+    .button-secondary, .upload-label { background: #edf2eb; color: #31513a; }
+    .button-secondary:hover, .upload-label:hover { background: #e1eade; }
+    .button:disabled { cursor: not-allowed; opacity: .48; }
+    input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+    input[type="file"]:focus-visible + .upload-label { outline: 3px solid #87aa8b; outline-offset: 3px; }
+    .status { min-height: 48px; margin: 16px 0 0; padding: 14px 16px; border-radius: 14px; background: #eaf0e8; color: #3d5741; font-size: .92rem; line-height: 1.45; }
+    .results { margin-top: 20px; padding: 20px; }
+    .results h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    .results p { margin: 0; color: #657065; line-height: 1.5; }
+    .privacy { margin: 14px 4px 0; color: #6b756c; font-size: .8rem; line-height: 1.5; }
+    @media (max-width: 390px) { .page { width: min(100% - 24px, 620px); padding-top: 22px; } .controls { grid-template-columns: 1fr; } .viewer { min-height: 260px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">Dein kleiner Wäschehelfer</p>
+      <h1>Socken-Sortierer 🧦</h1>
+      <p class="intro">Fotografiere deine Socken oder wähle ein Bild aus. Die Erkennung kommt als nächster Schritt.</p>
+    </header>
+
+    <section class="card" aria-label="Kamera und Bildauswahl">
+      <div class="viewer" id="viewer">
+        <span class="camera-badge" id="cameraBadge">Noch kein Bild</span>
+        <video id="camera" autoplay playsinline muted hidden aria-label="Live-Kamerabild"></video>
+        <img id="photo" alt="Ausgewähltes Sockenbild" hidden>
+        <div class="placeholder" id="placeholder">
+          <span class="placeholder-icon" aria-hidden="true">📷</span>
+          <p>Starte die Kamera oder wähle ein vorhandenes Foto aus.</p>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="button button-primary" id="cameraButton" type="button">Kamera starten</button>
+        <button class="button button-secondary" id="captureButton" type="button" disabled>Foto aufnehmen</button>
+        <input id="imageInput" type="file" accept="image/*" capture="environment">
+        <label class="upload-label" for="imageInput">Bild auswählen</label>
+        <button class="button button-secondary" id="stopButton" type="button" disabled>Kamera beenden</button>
+      </div>
+    </section>
+
+    <p class="status" id="status" role="status" aria-live="polite">Bereit. Für die Kamera ist eine sichere Verbindung (HTTPS) erforderlich.</p>
+
+    <section class="card results" aria-labelledby="resultsTitle">
+      <h2 id="resultsTitle">Erkennung</h2>
+      <p id="resultsText">Hier erscheinen später die erkannten Socken, ihre Anzahl und mögliche Paare.</p>
+    </section>
+    <p class="privacy">Deine Bilder werden in diesem Grundgerüst nur auf dieser Seite angezeigt und nicht hochgeladen. Eine automatische Erkennung ist noch nicht eingerichtet.</p>
+  </main>
+
+  <script>
+    const camera = document.querySelector('#camera');
+    const photo = document.querySelector('#photo');
+    const placeholder = document.querySelector('#placeholder');
+    const cameraButton = document.querySelector('#cameraButton');
+    const captureButton = document.querySelector('#captureButton');
+    const stopButton = document.querySelector('#stopButton');
+    const imageInput = document.querySelector('#imageInput');
+    const status = document.querySelector('#status');
+    const cameraBadge = document.querySelector('#cameraBadge');
+    let cameraStream = null;
+    let currentImageUrl = null;
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function showImage(imageUrl, badgeText) {
+      photo.src = imageUrl;
+      photo.hidden = false;
+      camera.hidden = true;
+      placeholder.hidden = true;
+      cameraBadge.textContent = badgeText;
+      document.querySelector('#resultsText').textContent = 'Bild bereit. Die automatische Sockenerkennung wird in einem späteren Schritt ergänzt.';
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('Kamerazugriff ist hier nicht verfügbar. Öffne die Seite über HTTPS oder wähle ein Bild aus.');
+        return;
+      }
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } }
+        });
+        camera.srcObject = cameraStream;
+        camera.hidden = false;
+        photo.hidden = true;
+        placeholder.hidden = true;
+        cameraBadge.textContent = 'Live-Kamera';
+        cameraButton.disabled = true;
+        captureButton.disabled = false;
+        stopButton.disabled = false;
+        setStatus('Kamera aktiv. Richte sie auf die Socken und nimm ein Foto auf.');
+      } catch (error) {
+        const message = error.name === 'NotAllowedError'
+          ? 'Der Kamerazugriff wurde nicht erlaubt. Du kannst stattdessen ein Bild auswählen.'
+          : 'Die Kamera konnte nicht gestartet werden. Prüfe die Berechtigung oder wähle ein Bild aus.';
+        setStatus(message);
+      }
+    }
+
+    function stopCamera() {
+      cameraStream?.getTracks().forEach(track => track.stop());
+      cameraStream = null;
+      camera.srcObject = null;
+      camera.hidden = true;
+      cameraButton.disabled = false;
+      captureButton.disabled = true;
+      stopButton.disabled = true;
+      if (photo.hidden) {
+        placeholder.hidden = false;
+        cameraBadge.textContent = 'Noch kein Bild';
+      }
+      setStatus('Kamera beendet. Du kannst ein Bild auswählen oder die Kamera erneut starten.');
+    }
+
+    cameraButton.addEventListener('click', startCamera);
+    stopButton.addEventListener('click', stopCamera);
+
+    captureButton.addEventListener('click', () => {
+      if (!camera.videoWidth || !camera.videoHeight) {
+        setStatus('Die Kamera ist noch nicht bereit. Bitte kurz warten.');
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = camera.videoWidth;
+      canvas.height = camera.videoHeight;
+      canvas.getContext('2d').drawImage(camera, 0, 0);
+      showImage(canvas.toDataURL('image/jpeg', 0.9), 'Aufgenommenes Foto');
+      setStatus('Foto aufgenommen. Die automatische Sockenerkennung wird als nächster Schritt ergänzt.');
+    });
+
+    imageInput.addEventListener('change', event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        setStatus('Bitte wähle eine Bilddatei aus.');
+        return;
+      }
+      if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
+      currentImageUrl = URL.createObjectURL(file);
+      showImage(currentImageUrl, 'Ausgewähltes Bild');
+      setStatus('Bild geladen. Die automatische Sockenerkennung wird als nächster Schritt ergänzt.');
+    });
+
+    window.addEventListener('pagehide', () => {
+      cameraStream?.getTracks().forEach(track => track.stop());
+      if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
+    });
+  </script>
+</body>
+</html>
