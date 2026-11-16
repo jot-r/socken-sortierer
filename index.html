@@ -47,7 +47,7 @@
     <header>
       <p class="eyebrow">Dein kleiner Wäschehelfer</p>
       <h1>Socken-Sortierer 🧦</h1>
-      <p class="intro">Foto aufnehmen oder auswählen und die Objekterkennung im Browser ausprobieren.</p>
+      <p class="intro">Live-Kamera und Bildanalyse im Browser. Für echte Socken brauchst du später ein spezielles Modell.</p>
     </header>
 
     <section class="card" aria-label="Kamera und Bildauswahl">
@@ -68,9 +68,9 @@
       </div>
     </section>
 
-    <p class="status" id="status" role="status" aria-live="polite">Wähle ein Bild oder nimm ein Foto auf. Beim ersten Start werden TensorFlow.js und das COCO-SSD-Modell geladen.</p>
-    <section class="card results" aria-labelledby="resultsTitle"><h2 id="resultsTitle">Erkennung</h2><p id="resultsText">Die erkannten Objekte erscheinen hier.</p></section>
-    <p class="note">Die Erkennung läuft lokal im Browser; TensorFlow.js und das Modell werden beim ersten Einsatz aus dem Internet geladen. COCO-SSD kennt keine Socke als eigene Klasse. Es kann aber andere gelernte Objekte erkennen. Für echte Sockenerkennung brauchst du später ein Sock-Modell.</p>
+    <p class="status" id="status" role="status" aria-live="polite">Beim ersten Start werden TensorFlow.js und COCO-SSD geladen. Für die Kamera ist HTTPS erforderlich.</p>
+    <section class="card results" aria-labelledby="resultsTitle"><h2 id="resultsTitle">Erkennung</h2><p id="resultsText">Live-Erkennung startet automatisch nach dem Kamerastart.</p></section>
+    <p class="note">COCO-SSD kennt keine Sockenklasse. Damit wird ein allgemeiner Objekt-Detector für Tests im Browser gestartet. Für echte Socken erkennst du später ein eigenes Modell mit einem Socken-Dataset.</p>
   </main>
 
   <script>
@@ -87,10 +87,13 @@
     const status = document.querySelector('#status');
     const cameraBadge = document.querySelector('#cameraBadge');
     const resultsText = document.querySelector('#resultsText');
+
     let cameraStream = null;
     let currentImageUrl = null;
     let modelPromise = null;
-    let detections = [];
+    let model = null;
+    let detectionInterval = null;
+    let currentDetections = [];
 
     function setStatus(message) { status.textContent = message; }
 
@@ -102,84 +105,210 @@
       camera.hidden = true;
       placeholder.hidden = true;
       overlay.hidden = true;
-      detections = [];
+      currentDetections = [];
       cameraBadge.textContent = badgeText;
       detectButton.disabled = !photo.complete || !photo.naturalWidth;
       resultsText.textContent = 'Bild bereit. Klicke auf „Objekte erkennen“. Socken sind im COCO-SSD-Modell keine eigene Klasse.';
     }
 
-    async function startCamera() {
-      if (!navigator.mediaDevices?.getUserMedia) { setStatus('Kamerazugriff nicht verfügbar. Öffne die Seite über HTTPS oder wähle ein Bild aus.'); return; }
-      try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } });
-        camera.srcObject = cameraStream;
-        camera.hidden = false; photo.hidden = true; overlay.hidden = true; placeholder.hidden = true;
-        cameraBadge.textContent = 'Live-Kamera';
-        cameraButton.disabled = true; captureButton.disabled = false; stopButton.disabled = false; detectButton.disabled = true;
-        setStatus('Kamera aktiv. Richte sie auf die Szene und nimm ein Foto auf.');
-      } catch (error) {
-        setStatus(error.name === 'NotAllowedError' ? 'Kamerazugriff nicht erlaubt. Du kannst stattdessen ein Bild auswählen.' : 'Kamera konnte nicht gestartet werden. Prüfe die Berechtigung oder wähle ein Bild aus.');
+    function stopDetectionLoop() {
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+        detectionInterval = null;
       }
+      overlay.hidden = true;
     }
 
-    function stopCamera(updateStatus = true) {
-      cameraStream?.getTracks().forEach(track => track.stop());
-      cameraStream = null; camera.srcObject = null; camera.hidden = true;
-      cameraButton.disabled = false; captureButton.disabled = true; stopButton.disabled = true;
-      if (photo.hidden) { placeholder.hidden = false; cameraBadge.textContent = 'Noch kein Bild'; }
-      if (updateStatus) setStatus('Kamera beendet. Du kannst ein Bild auswählen oder die Kamera erneut starten.');
-    }
-
-    function loadModel() {
-      if (!window.tf || !window.cocoSsd) return Promise.reject(new Error('TensorFlow.js oder COCO-SSD wurde nicht geladen. Prüfe Internetverbindung und CDN-Zugriff.'));
-      if (!modelPromise) {
-        modelPromise = tf.ready().then(() => cocoSsd.load({ base: 'lite_mobilenet_v2' }))
-          .catch(error => { modelPromise = null; throw error; });
+    function drawDetectionsFromList(items, targetElement) {
+      if (!items || !items.length || !targetElement || targetElement.hidden) {
+        overlay.hidden = true;
+        return;
       }
-      return modelPromise;
-    }
 
-    function drawDetections() {
-      if (!detections.length || photo.hidden || !photo.naturalWidth) { overlay.hidden = true; return; }
       const rect = viewer.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      overlay.width = Math.round(rect.width * dpr); overlay.height = Math.round(rect.height * dpr);
+      overlay.width = Math.round(rect.width * dpr);
+      overlay.height = Math.round(rect.height * dpr);
       overlay.hidden = false;
-      const context = overlay.getContext('2d');
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.clearRect(0, 0, rect.width, rect.height);
+      const ctx = overlay.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const scale = Math.min(rect.width / targetElement.videoWidth, rect.height / targetElement.videoHeight);
+      const offsetX = (rect.width - targetElement.videoWidth * scale) / 2;
+      const offsetY = (rect.height - targetElement.videoHeight * scale) / 2;
+
+      ctx.lineWidth = 3;
+      ctx.font = '600 14px system-ui';
+
+      for (const item of items) {
+        const [x, y, width, height] = item.bbox;
+        const px = offsetX + x * scale;
+        const py = offsetY + y * scale;
+        const pw = width * scale;
+        const ph = height * scale;
+        const label = `${item.className || item.class} ${(item.score * 100).toFixed(0)}%`;
+
+        ctx.strokeStyle = '#42d66b';
+        ctx.fillStyle = '#42d66b';
+        ctx.strokeRect(px, py, pw, ph);
+
+        const labelWidth = ctx.measureText(label).width + 12;
+        const labelY = Math.max(0, py - 25);
+        ctx.fillRect(px, labelY, labelWidth, 24);
+        ctx.fillStyle = '#102515';
+        ctx.fillText(label, px + 6, labelY + 17);
+      }
+    }
+
+    function drawDetectionsFromImage(items) {
+      if (!items || !items.length || photo.hidden || !photo.naturalWidth) {
+        overlay.hidden = true;
+        return;
+      }
+      const rect = viewer.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      overlay.width = Math.round(rect.width * dpr);
+      overlay.height = Math.round(rect.height * dpr);
+      overlay.hidden = false;
+      const ctx = overlay.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
       const scale = Math.min(rect.width / photo.naturalWidth, rect.height / photo.naturalHeight);
       const offsetX = (rect.width - photo.naturalWidth * scale) / 2;
       const offsetY = (rect.height - photo.naturalHeight * scale) / 2;
-      context.lineWidth = 3; context.font = '600 14px system-ui';
-      for (const item of detections) {
-        const [x0, y0, width0, height0] = item.bbox;
-        const x = offsetX + x0 * scale, y = offsetY + y0 * scale;
-        const width = width0 * scale, height = height0 * scale;
-        const label = `${item.class} ${(item.score * 100).toFixed(0)}%`;
-        context.strokeStyle = '#42d66b'; context.fillStyle = '#42d66b'; context.strokeRect(x, y, width, height);
-        const labelWidth = context.measureText(label).width + 12;
-        const labelY = Math.max(0, y - 25);
-        context.fillRect(x, labelY, labelWidth, 24);
-        context.fillStyle = '#102515'; context.fillText(label, x + 6, labelY + 17);
+
+      ctx.lineWidth = 3;
+      ctx.font = '600 14px system-ui';
+
+      for (const item of items) {
+        const [x, y, width, height] = item.bbox;
+        const px = offsetX + x * scale;
+        const py = offsetY + y * scale;
+        const pw = width * scale;
+        const ph = height * scale;
+        const label = `${item.className || item.class} ${(item.score * 100).toFixed(0)}%`;
+
+        ctx.strokeStyle = '#42d66b';
+        ctx.fillStyle = '#42d66b';
+        ctx.strokeRect(px, py, pw, ph);
+
+        const labelWidth = ctx.measureText(label).width + 12;
+        const labelY = Math.max(0, py - 25);
+        ctx.fillRect(px, labelY, labelWidth, 24);
+        ctx.fillStyle = '#102515';
+        ctx.fillText(label, px + 6, labelY + 17);
       }
     }
 
-    async function recognize() {
-      if (photo.hidden || !photo.complete || !photo.naturalWidth) { setStatus('Bitte zuerst ein Bild aufnehmen oder auswählen.'); return; }
+    async function loadModel() {
+      if (!window.tf || !window.cocoSsd) {
+        throw new Error('TensorFlow.js oder COCO-SSD wurde nicht geladen. Prüfe die Internetverbindung.');
+      }
+      if (!modelPromise) {
+        modelPromise = tf.ready().then(() => cocoSsd.load({ base: 'lite_mobilenet_v2' }))
+          .catch(error => {
+            modelPromise = null;
+            throw error;
+          });
+      }
+      model = await modelPromise;
+      return model;
+    }
+
+    async function detectOnVideo() {
+      if (!camera || camera.hidden || !camera.videoWidth || !camera.videoHeight) return;
+      try {
+        if (!model) model = await loadModel();
+        const predictions = await model.detect(camera, 20, 0.35);
+        currentDetections = predictions;
+        drawDetectionsFromList(predictions, camera);
+
+        if (predictions.length) {
+          const labels = predictions.map(item => `${item.className || item.class} (${Math.round(item.score * 100)}%)`).join(', ');
+          resultsText.textContent = `Live-Erkennung: ${labels}`;
+        } else {
+          resultsText.textContent = 'Live-Erkennung: Keine Objekte mit ausreichender Sicherheit gefunden.';
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus('Live-Erkennung fehlgeschlagen. Prüfe die Verbindung und die Aktivierung der Kamera.');
+      }
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus('Kamerazugriff nicht verfügbar. Öffne die Seite über HTTPS oder wähle ein Bild aus.');
+        return;
+      }
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } }
+        });
+
+        camera.srcObject = cameraStream;
+        camera.hidden = false;
+        photo.hidden = true;
+        placeholder.hidden = true;
+        cameraBadge.textContent = 'Live-Kamera';
+        cameraButton.disabled = true;
+        captureButton.disabled = false;
+        stopButton.disabled = false;
+        detectButton.disabled = false;
+
+        setStatus('Kamera aktiv. Live-Erkennung läuft jetzt.');
+        await loadModel();
+        if (!detectionInterval) {
+          detectionInterval = setInterval(detectOnVideo, 700);
+        }
+      } catch (error) {
+        setStatus(error.name === 'NotAllowedError'
+          ? 'Kamerazugriff nicht erlaubt. Du kannst stattdessen ein Bild auswählen.'
+          : 'Kamera konnte nicht gestartet werden. Prüfe die Berechtigung oder wähle ein Bild aus.');
+      }
+    }
+
+    function stopCamera(resetText = true) {
+      stopDetectionLoop();
+      cameraStream?.getTracks().forEach(track => track.stop());
+      cameraStream = null;
+      camera.srcObject = null;
+      camera.hidden = true;
+      cameraButton.disabled = false;
+      captureButton.disabled = true;
+      stopButton.disabled = true;
+      detectButton.disabled = true;
+      if (photo.hidden) {
+        placeholder.hidden = false;
+        cameraBadge.textContent = 'Noch kein Bild';
+      }
+      if (resetText) setStatus('Kamera beendet. Du kannst ein Bild auswählen oder die Kamera erneut starten.');
+    }
+
+    async function recognizeImage() {
+      if (photo.hidden || !photo.complete || !photo.naturalWidth) {
+        setStatus('Bitte zuerst ein Bild aufnehmen oder auswählen.');
+        return;
+      }
+
       detectButton.disabled = true;
       try {
-        setStatus('Lade TensorFlow.js und COCO-SSD (beim ersten Mal kann es etwas dauern)…');
-        const model = await loadModel();
         setStatus('Analysiere das Bild…');
-        detections = await model.detect(photo, 20, 0.35);
-        drawDetections();
-        if (detections.length) {
-          resultsText.textContent = `${detections.length} Objekt${detections.length === 1 ? '' : 'e'} erkannt: ${detections.map(item => `${item.class} (${Math.round(item.score * 100)} %)`).join(', ')}.`;
-          setStatus('Erkennung abgeschlossen. Die Rahmen zeigen die gefundenen COCO-Objekte.');
+        model = await loadModel();
+        const predictions = await model.detect(photo, 20, 0.35);
+        currentDetections = predictions;
+        drawDetectionsFromImage(predictions);
+
+        if (predictions.length) {
+          const labels = predictions.map(item => `${item.className || item.class} (${Math.round(item.score * 100)}%)`).join(', ');
+          resultsText.textContent = `Erkannt: ${labels}`;
+          setStatus('Erkennung abgeschlossen. Die Rahmen zeigen die gefundenen Objekte.');
         } else {
-          resultsText.textContent = 'Keine COCO-Objekte mit ausreichender Sicherheit gefunden. Socken sind keine eigene Klasse dieses Modells.';
-          setStatus('Fertig: keine passenden Objekte gefunden. Probiere ein anderes Bild oder bessere Beleuchtung.');
+          resultsText.textContent = 'Keine Objekte mit ausreichender Sicherheit gefunden. Socken sind keine eigene Klasse dieses Modells.';
+          setStatus('Keine passenden Objekte gefunden. Probiere ein anderes Bild oder bessere Beleuchtung.');
         }
       } catch (error) {
         console.error(error);
@@ -191,27 +320,46 @@
 
     cameraButton.addEventListener('click', startCamera);
     stopButton.addEventListener('click', () => stopCamera());
-    detectButton.addEventListener('click', recognize);
+    detectButton.addEventListener('click', recognizeImage);
+
     captureButton.addEventListener('click', () => {
-      if (!camera.videoWidth || !camera.videoHeight) { setStatus('Die Kamera ist noch nicht bereit. Bitte kurz warten.'); return; }
+      if (!camera.videoWidth || !camera.videoHeight) {
+        setStatus('Die Kamera ist noch nicht bereit. Bitte kurz warten.');
+        return;
+      }
       const canvas = document.createElement('canvas');
-      canvas.width = camera.videoWidth; canvas.height = camera.videoHeight;
+      canvas.width = camera.videoWidth;
+      canvas.height = camera.videoHeight;
       canvas.getContext('2d').drawImage(camera, 0, 0);
       showImage(canvas.toDataURL('image/jpeg', 0.9), 'Aufgenommenes Foto');
-      stopCamera(false);
+      stopDetectionLoop();
       setStatus('Foto aufgenommen. Klicke auf „Objekte erkennen“.');
     });
+
     imageInput.addEventListener('change', event => {
       const file = event.target.files?.[0];
       if (!file) return;
-      if (!file.type.startsWith('image/')) { setStatus('Bitte wähle eine Bilddatei aus.'); return; }
+      if (!file.type.startsWith('image/')) {
+        setStatus('Bitte wähle eine Bilddatei aus.');
+        return;
+      }
       if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
       currentImageUrl = URL.createObjectURL(file);
+      stopDetectionLoop();
       showImage(currentImageUrl, 'Ausgewähltes Bild');
       setStatus('Bild geladen. Klicke auf „Objekte erkennen“.');
     });
-    window.addEventListener('resize', drawDetections);
+
+    window.addEventListener('resize', () => {
+      if (camera && !camera.hidden && currentDetections.length) {
+        drawDetectionsFromList(currentDetections, camera);
+      } else if (photo && !photo.hidden && currentDetections.length) {
+        drawDetectionsFromImage(currentDetections);
+      }
+    });
+
     window.addEventListener('pagehide', () => {
+      stopDetectionLoop();
       cameraStream?.getTracks().forEach(track => track.stop());
       if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
     });
