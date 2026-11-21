@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Socken-Labeling</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #202820; background: #f3f5ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { position: sticky; z-index: 2; top: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #dfe5da; }
+    h1 { margin: 0; font-size: 1.2rem; }
+    .toolbar, .navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    button { min-height: 42px; padding: 8px 14px; border: 0; border-radius: 10px; background: #315d3b; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+    button.secondary { background: #e8eee6; color: #31513a; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #counter { min-width: 90px; text-align: center; font-variant-numeric: tabular-nums; }
+    #message { padding: 9px 16px; min-height: 40px; color: #435647; background: #e8eee6; }
+    main { padding: 14px 16px 30px; }
+    #help { margin: 0 0 12px; color: #606b60; font-size: .92rem; }
+    #stageWrap { min-height: 55vh; display: grid; place-items: center; padding: 12px; border-radius: 14px; background: #dfe5dc; }
+    #stage { position: relative; width: fit-content; max-width: 100%; }
+    #image { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+    #canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+    #empty { padding: 36px 16px; color: #5e695f; text-align: center; }
+    @media (max-width: 650px) {
+      header { position: static; align-items: flex-start; }
+      .toolbar { width: 100%; }
+      .toolbar button { flex: 1; }
+      #stageWrap { min-height: 50vh; padding: 4px; }
+      #image { max-height: 65vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧦 Socken-Labeling <small style="font-size:.72em;font-weight:500">YOLO • Klasse 0: sock</small></h1>
+    <div class="toolbar">
+      <button class="secondary" id="prev">← Zurück</button>
+      <span id="counter">0 / 0</span>
+      <button class="secondary" id="next">Weiter →</button>
+      <button class="secondary" id="undo">Letztes löschen</button>
+      <button id="save">Speichern</button>
+    </div>
+  </header>
+  <div id="message" role="status" aria-live="polite">Lade Bilder …</div>
+  <main>
+    <p id="help">Ziehe mit Finger oder Maus einen Rahmen um jede Socke. Bestehende Rahmen antippen, um sie zu löschen. Speichern mit dem Button oder Strg/Cmd+S.</p>
+    <div id="stageWrap">
+      <div id="empty" hidden>Keine Bilder gefunden. Lege JPG-, PNG- oder WebP-Bilder in den Ordner <code>images/</code> und lade diese Seite neu.</div>
+      <div id="stage" hidden>
+        <img id="image" alt="Zu labelndes Bild">
+        <canvas id="canvas" aria-label="Labeling-Zeichenfläche"></canvas>
+      </div>
+    </div>
+  </main>
+<script>
+  const imageEl = document.getElementById('image');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+  const empty = document.getElementById('empty');
+  const message = document.getElementById('message');
+  const counter = document.getElementById('counter');
+  const prevButton = document.getElementById('prev');
+  const nextButton = document.getElementById('next');
+  const saveButton = document.getElementById('save');
+  const undoButton = document.getElementById('undo');
+  let images = [];
+  let index = -1;
+  let boxes = [];
+  let dirty = false;
+  let dragging = null;
+
+  function setMessage(text) { message.textContent = text; }
+  function markDirty() { dirty = true; saveButton.textContent = 'Speichern *'; }
+  function setClean() { dirty = false; saveButton.textContent = 'Speichern'; }
+
+  async function api(url, options) {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(await response.text() || response.statusText);
+    return response.json();
+  }
+
+  async function loadImageList() {
+    try {
+      images = await api('/api/images');
+      empty.hidden = images.length !== 0;
+      stage.hidden = images.length === 0;
+      prevButton.disabled = nextButton.disabled = saveButton.disabled = images.length === 0;
+      if (!images.length) { counter.textContent = '0 / 0'; setMessage('Lege Bilddateien in images/ und aktualisiere.'); return; }
+      index = 0;
+      await showCurrent();
+    } catch (error) { setMessage('Bilderliste konnte nicht geladen werden: ' + error.message); }
+  }
+
+  async function showCurrent() {
+    if (dirty && !confirm('Änderungen verwerfen und das nächste Bild öffnen?')) return;
+    setClean();
+    dragging = null;
+    const name = images[index];
+    counter.textContent = (index + 1) + ' / ' + images.length + ' — ' + name;
+    imageEl.onload = async () => {
+      fitCanvas();
+      try {
+        boxes = await api('/api/labels?image=' + encodeURIComponent(name));
+        draw();
+        setMessage('Bild geladen. Ziehe einen Rahmen um jede Socke; Änderungen mit „Speichern“ sichern.');
+      } catch (error) { boxes = []; draw(); setMessage('Label konnte nicht geladen werden: ' + error.message); }
+    };
+    imageEl.onerror = () => setMessage('Bild konnte nicht geladen werden: ' + name);
+    imageEl.src = '/images/' + encodeURIComponent(name) + '?t=' + Date.now();
+    prevButton.disabled = index === 0;
+    nextButton.disabled = index === images.length - 1;
+  }
+
+  function fitCanvas() {
+    const rect = imageEl.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+
+  function draw() {
+    if (!imageEl.naturalWidth) return;
+    const rect = imageEl.getBoundingClientRect();
+    const width = rect.width, height = rect.height;
+    const sx = width / imageEl.naturalWidth, sy = height / imageEl.naturalHeight;
+    ctx.clearRect(0, 0, width, height);
+    boxes.forEach((box, i) => drawBox(box, i, sx, sy, false));
+    if (dragging) {
+      const x = Math.min(dragging.x, dragging.currentX);
+      const y = Math.min(dragging.y, dragging.currentY);
+      const w = Math.abs(dragging.currentX - dragging.x);
+      const h = Math.abs(dragging.currentY - dragging.y);
+      ctx.fillStyle = 'rgba(255, 190, 40, .18)'; ctx.strokeStyle = '#ffae00'; ctx.lineWidth = 2;
+      ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+    }
+  }
+
+  function drawBox(box, i, sx, sy, active) {
+    const x = (box.x - box.w / 2) * imageEl.naturalWidth * sx;
+    const y = (box.y - box.h / 2) * imageEl.naturalHeight * sy;
+    const w = box.w * imageEl.naturalWidth * sx;
+    const h = box.h * imageEl.naturalHeight * sy;
+    ctx.fillStyle = active ? 'rgba(255, 174, 0, .18)' : 'rgba(38, 129, 70, .16)';
+    ctx.strokeStyle = active ? '#ffae00' : '#278145'; ctx.lineWidth = 2;
+    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+    const label = 'sock ' + (i + 1);
+    ctx.font = '600 13px system-ui';
+    const labelWidth = ctx.measureText(label).width + 10;
+    const labelY = Math.max(0, y - 22);
+    ctx.fillStyle = active ? '#ffae00' : '#278145'; ctx.fillRect(x, labelY, labelWidth, 22);
+    ctx.fillStyle = '#fff'; ctx.fillText(label, x + 5, labelY + 15);
+  }
+
+  function point(event) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(rect.width, event.clientX - rect.left)), y: Math.max(0, Math.min(rect.height, event.clientY - rect.top)), width: rect.width, height: rect.height };
+  }
+
+  function hitBox(p) {
+    for (let i = boxes.length - 1; i >= 0; i--) {
+      const b = boxes[i];
+      const x1 = (b.x - b.w / 2) * p.width, x2 = (b.x + b.w / 2) * p.width;
+      const y1 = (b.y - b.h / 2) * p.height, y2 = (b.y + b.h / 2) * p.height;
+      if (p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2) return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('pointerdown', event => {
+    if (!imageEl.naturalWidth) return;
+    const p = point(event);
+    const hit = hitBox(p);
+    if (hit >= 0) {
+      boxes.splice(hit, 1); markDirty(); draw();
+      setMessage('Label gelöscht. Speichern nicht vergessen.');
+      return;
+    }
+    dragging = { x: p.x, y: p.y, currentX: p.x, currentY: p.y, width: p.width, height: p.height };
+    canvas.setPointerCapture(event.pointerId);
+    draw();
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    const p = point(event); dragging.currentX = p.x; dragging.currentY = p.y; draw();
+  });
+  function finishDrawing() {
+    if (!dragging) return;
+    const d = dragging; dragging = null;
+    const x1 = Math.min(d.x, d.currentX), y1 = Math.min(d.y, d.currentY);
+    const w = Math.abs(d.currentX - d.x), h = Math.abs(d.currentY - d.y);
+    if (w >= 6 && h >= 6) {
+      boxes.push({ class: 0, x: (x1 + w / 2) / d.width, y: (y1 + h / 2) / d.height, w: w / d.width, h: h / d.height });
+      markDirty(); setMessage('Socke gelabelt (' + boxes.length + '). Speichern nicht vergessen.');
+    }
+    draw();
+  }
+  canvas.addEventListener('pointerup', finishDrawing);
+  canvas.addEventListener('pointercancel', finishDrawing);
+
+  saveButton.addEventListener('click', save);
+  async function save() {
+    if (index < 0 || !dirty) return;
+    saveButton.disabled = true;
+    try {
+      const result = await api('/api/labels', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: images[index], labels: boxes }) });
+      setClean(); setMessage('Gespeichert: ' + result.count + ' Label(s). YOLO-Datei liegt in labels/.');
+    } catch (error) { setMessage('Speichern fehlgeschlagen: ' + error.message); }
+    finally { saveButton.disabled = false; }
+  }
+
+  async function move(delta) {
+    if (dirty && !confirm('Änderungen verwerfen und wechseln?')) return;
+    const target = Math.max(0, Math.min(images.length - 1, index + delta));
+    if (target === index) return;
+    index = target; await showCurrent();
+  }
+  prevButton.addEventListener('click', () => move(-1));
+  nextButton.addEventListener('click', () => move(1));
+  undoButton.addEventListener('click', () => {
+    if (!boxes.length) return;
+    boxes.pop(); markDirty(); draw(); setMessage('Letztes Label entfernt. Speichern nicht vergessen.');
+  });
+  window.addEventListener('resize', fitCanvas);
+  window.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
+    else if (event.key === 'ArrowLeft') move(-1);
+    else if (event.key === 'ArrowRight') move(1);
+  });
+  window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+
+  loadImageList();
+</script>
+</body>
+</html>
