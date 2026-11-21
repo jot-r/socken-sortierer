@@ -1,41 +1,45 @@
-# Socken-Bilder für YOLO labeln
+# Socken-Bilder labeln und YOLO trainieren
 
-Ein kleines lokales Web-Labeling-Tool in Go. Es zeigt Bilder aus `images/`, erlaubt per Maus oder Touch YOLO-Bounding-Boxes für eine Klasse (`0 = sock`) zu zeichnen und speichert sie als YOLO-Textdateien nach `labels/`.
+Lokales Web-Tool in Go zum Labeln von Bildern und Starten/Überwachen eines Ultralytics-YOLO-Trainings. Es zeichnet YOLO-Bounding-Boxes (Klasse `0 = sock`), speichert die Labels als Textdateien und bietet Eingabefelder für Modell, Dataset, Epochen, Bildgröße, Batch, Device, Patience und Worker. Laufstatus, Trainingslogs und Graphen für Precision/Recall/mAP/Loss werden aus `results.csv` angezeigt.
+
+## Voraussetzung
+
+- Go 1.22+
+- Python mit Ultralytics installiert und das `yolo`-Kommando im `PATH`:
+
+```sh
+python3 -m pip install ultralytics
+```
+
+Falls `yolo` nicht im PATH liegt, setze `YOLO_BIN` auf den Pfad zur Ultralytics-CLI. Zum Beispiel bei einer virtuellen Umgebung: `YOLO_BIN=/path/to/.venv/bin/yolo`.
 
 ## Starten
 
-Voraussetzung: Go 1.22 oder neuer.
-
 ```sh
 mkdir -p images labels
-# JPG-, PNG- oder WebP-Bilder in images/ kopieren
+# JPG-, PNG- oder WebP-Bilder nach images/ kopieren
 cd labeler
 go run .
 ```
 
-Dann auf demselben Rechner `http://127.0.0.1:8080` öffnen. Das Tool bindet standardmäßig nur an localhost und braucht weder Cloud noch externe JavaScript-Bibliotheken. `images/` und `labels/` sind relativ zum Arbeitsverzeichnis des Programms (bei obigen Befehlen also Repository-Root).
+Öffne danach `http://127.0.0.1:8080`. Die Anwendung bindet standardmäßig ausschließlich an localhost. Trainingsdaten und Ergebnisse bleiben auf diesem Rechner. Bilder und Labels werden relativ zum Repository-Ordner in `images/` und `labels/` erwartet, wenn die App aus `labeler/` gestartet wird.
 
-Optional lassen sich Verzeichnisse und Adresse konfigurieren:
+## Dataset für YOLO erstellen
 
-```sh
-LABELER_IMAGES=/pfad/zu/bildern LABELER_LABELS=/pfad/zu/labels go run .
-```
-
-## Bedienung
-
-- Ziehe einen Rahmen um jede Socke.
-- Tippe/klicke einen bestehenden Rahmen an, um ihn zu löschen.
-- „Letztes löschen“ entfernt das zuletzt angelegte Label.
-- Speichere mit dem Button oder `Strg/Cmd+S`.
-- Mit Pfeil links/rechts wechselst du zwischen Bildern.
-
-Die Textdatei hat denselben Basisnamen wie das Bild und das YOLO-Detection-Format:
+Der Labeler legt YOLO-Dateien in `labels/` ab. Für Training/Validierung müssen Bilder und gleichnamige Labeldateien in YOLO-Struktur liegen:
 
 ```text
-class_id x_center y_center width height
+dataset/
+├── images/
+│   ├── train/
+│   └── val/
+├── labels/
+│   ├── train/
+│   └── val/
+└── dataset.yaml
 ```
 
-Koordinaten sind auf 0–1 normiert; die einzige Klasse hat ID `0` und heißt `sock`. Beispiel für Ultralytics-Dataset-YAML:
+Beispiel `dataset.yaml` (absolute Pfade vermeiden Pfadverwechslungen):
 
 ```yaml
 path: /absoluter/pfad/zum/dataset
@@ -45,8 +49,20 @@ names:
   0: sock
 ```
 
-Lege dafür Bilder und Labeldateien entsprechend in `images/train`, `images/val` und `labels/train`, `labels/val`. Das Tool selbst liest alle unterstützten Bilder aus einem einzigen Eingabeordner und speichert Labels zentral in einem Labelordner.
+Teile die Bilder zufällig in Train und Val auf, z. B. 80/20. Die Validierungsbilder sollten nicht dieselben Aufnahmen wie Train enthalten. Labels haben die Form `class_id x_center y_center width height`, normiert von 0 bis 1.
 
-## Hinweise
+## Training bedienen
 
-Die Labels werden nur lokal gespeichert. Das Tool speichert erst beim Klick auf „Speichern“; beim Verlassen mit ungespeicherten Änderungen erscheint eine Warnung. Unterstützte Formate: JPG/JPEG, PNG, WebP und BMP. Bitte nicht an ein öffentliches Netzwerk binden: Das lokale Tool hat keine Authentifizierung.
+Im Abschnitt „YOLOv8n-Training“ stellst du Dataset-YAML, Checkpoint (Standard `yolov8n.pt`), Epochen, `imgsz`, Batch, Device (`0`, `cpu`, `mps`), Patience und Worker ein. Klick auf „Training starten“. Das Go-Programm startet das `yolo detect train`-Kommando mit diesen validierten Parametern. Während des Trainings kannst du den Status/Log beobachten oder es stoppen.
+
+Ergebnisse liegen in `runs/detect/sock-<Zeitstempel>/`, unter anderem:
+
+- `weights/best.pt` und `weights/last.pt`
+- `results.csv` — Trainings- und Validierungsmetriken
+- Ultralytics-Plot- und Konfigurationsdateien
+
+Der UI-Graph liest die CSV-Metriken aus dem aktuellen Lauf. Wähle im Menü mAP50, mAP50-95, Precision, Recall oder Loss. Die Weboberfläche aktualisiert Status/Graph während des Trainings.
+
+## Sicherheitshinweis
+
+Das Training kann hohe CPU-/GPU-Auslastung verursachen. Die Webapp ist für lokale Nutzung gedacht; nicht öffentlich ins Netzwerk exponieren. Start-/Stop-Endpunkte haben keine Authentifizierung und sind daher absichtlich nur auf `127.0.0.1` gebunden. Trainingsgewichte und Dataset bleiben lokal.
