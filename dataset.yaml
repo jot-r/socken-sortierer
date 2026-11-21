@@ -1,0 +1,8 @@
+# Dataset-Konfiguration für den Labeler.
+# Bilder liegen in images/ und die gleichnamigen YOLO-Labels in labels/.
+path: .
+train: images
+val: images
+
+names:
+  0: sock
