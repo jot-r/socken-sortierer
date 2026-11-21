@@ -9,18 +9,14 @@
     * { box-sizing: border-box; }
     body { margin: 0; }
     header { position: sticky; z-index: 2; top: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #dfe5da; }
-    h1 { margin: 0; font-size: 1.2rem; }
-    h2 { margin: 0 0 12px; }
+    h1 { margin: 0; font-size: 1.2rem; } h2 { margin: 0 0 12px; }
     button, input, select { font: inherit; }
     button { min-height: 42px; padding: 8px 14px; border: 0; border-radius: 10px; background: #315d3b; color: white; font-weight: 650; cursor: pointer; }
-    button.secondary { background: #e8eee6; color: #31513a; }
-    button.danger { background: #a63c32; }
-    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.secondary { background: #e8eee6; color: #31513a; } button.danger { background: #a63c32; } button:disabled { opacity: .45; cursor: not-allowed; }
     .toolbar, .navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     #counter { min-width: 90px; text-align: center; font-variant-numeric: tabular-nums; }
     #message { padding: 9px 16px; min-height: 40px; color: #435647; background: #e8eee6; }
-    main { padding: 14px 16px 30px; }
-    #help { margin: 0 0 12px; color: #606b60; font-size: .92rem; }
+    main { padding: 14px 16px 30px; } #help { margin: 0 0 12px; color: #606b60; font-size: .92rem; }
     #stageWrap { min-height: 50vh; display: grid; place-items: center; padding: 12px; border-radius: 14px; background: #dfe5dc; }
     #stage { position: relative; width: fit-content; max-width: 100%; }
     #image { display: block; max-width: 100%; max-height: 70vh; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-drag: none; }
@@ -28,127 +24,83 @@
     #empty { padding: 36px 16px; color: #5e695f; text-align: center; }
     .panel { margin: 18px 0; padding: 18px; border: 1px solid #dfe5da; border-radius: 16px; background: white; }
     .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; }
-    .field { display: grid; gap: 5px; }
-    .field label { color: #455347; font-size: .88rem; font-weight: 650; }
+    .field { display: grid; gap: 5px; } .field label { color: #455347; font-size: .88rem; font-weight: 650; }
     .field input, .field select { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd5c8; border-radius: 8px; background: #fff; }
     .hint { margin: 10px 0 14px; color: #647064; font-size: .88rem; line-height: 1.45; }
     .train-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 14px; }
-    .run-state { font-size: .9rem; font-weight: 650; }
-    #trainingError { color: #a83227; white-space: pre-wrap; }
-    .chart-wrap { width: 100%; height: 260px; margin-top: 12px; }
-    #chart { width: 100%; height: 100%; }
-    .metric-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .metric-chip { padding: 7px 10px; border-radius: 9px; background: #edf2eb; font-size: .85rem; }
-    #logs { max-height: 220px; overflow: auto; padding: 12px; border-radius: 10px; background: #172019; color: #e1eee1; font: .78rem/1.5 ui-monospace, monospace; white-space: pre-wrap; }
-    @media (max-width: 650px) {
-      header { position: static; align-items: flex-start; }
-      .toolbar { width: 100%; }
-      .toolbar button { flex: 1; }
-      #stageWrap { min-height: 40vh; padding: 4px; }
-      #image { max-height: 58vh; }
-      main { padding: 10px; }
-      .panel { padding: 13px; }
-    }
+    #trainingError { color: #a83227; white-space: pre-wrap; } #logs { max-height: 220px; overflow: auto; padding: 12px; border-radius: 10px; background: #172019; color: #e1eee1; font: .78rem/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+    .metric-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; } .metric-chip { padding: 7px 10px; border-radius: 9px; background: #edf2eb; font-size: .85rem; }
+    .chart-wrap { width: 100%; height: 260px; margin-top: 12px; } #chart { width: 100%; height: 100%; }
+    @media (max-width: 650px) { header { position: static; align-items: flex-start; } .toolbar { width: 100%; } .toolbar button { flex: 1; } #stageWrap { min-height: 40vh; padding: 4px; } #image { max-height: 58vh; } main { padding: 10px; } .panel { padding: 13px; } }
   </style>
 </head>
 <body>
   <header>
     <h1>🧦 Socken-Labeling <small style="font-size:.72em;font-weight:500">YOLO • Klasse 0: sock</small></h1>
-    <div class="toolbar">
-      <button class="secondary" id="prev">← Zurück</button><span id="counter">0 / 0</span>
-      <button class="secondary" id="next">Weiter →</button><button class="secondary" id="undo">Letztes löschen</button><button id="save">Label speichern</button>
-    </div>
+    <div class="toolbar"><button class="secondary" id="prev">← Zurück</button><span id="counter">0 / 0</span><button class="secondary" id="next">Weiter →</button><button class="secondary" id="undo">Letztes löschen</button><button id="save">Label speichern</button></div>
   </header>
   <div id="message" role="status" aria-live="polite">Lade Bilder …</div>
   <main>
     <section class="panel">
-      <p id="help">Ziehe mit Finger oder Maus einen Rahmen um jede Socke. Bestehende Rahmen antippen, um sie zu löschen. Speichern mit Button oder Strg/Cmd+S.</p>
+      <p id="help">Ziehe mit Finger oder Maus einen Rahmen um jede Socke. Bestehende Labels an den Ecken anfassen und ziehen, um ihre Größe zu ändern; innerhalb des Rahmens ziehen, um ihn zu verschieben. Außerhalb antippen, um ein neues Label zu zeichnen. Speichern mit Button oder Strg/Cmd+S.</p>
       <div id="stageWrap"><div id="empty" hidden>Keine Bilder gefunden. Lege Bilder in <code>images/</code> und lade neu.</div><div id="stage" hidden><img id="image" alt="Zu labelndes Bild"><canvas id="canvas" aria-label="Labeling-Zeichenfläche"></canvas></div></div>
     </section>
-
     <section class="panel" aria-labelledby="trainTitle">
       <h2 id="trainTitle">YOLOv8n-Training</h2>
       <p class="hint">Trainiert lokal über das installierte Ultralytics-CLI. Dataset-YAML muss auf das YOLO-Dataset mit train/val-Bildern und Labels zeigen. Das Training belastet CPU/GPU und kann länger dauern.</p>
-      <form id="trainForm">
-        <div class="form-grid">
-          <div class="field" style="grid-column:span 2"><label for="data">Dataset YAML</label><input id="data" name="data" value="dataset.yaml" required></div>
-          <div class="field"><label for="model">Checkpoint</label><input id="model" name="model" value="yolov8n.pt" required></div>
-          <div class="field"><label for="epochs">Epochen</label><input id="epochs" name="epochs" type="number" min="1" max="10000" value="100" required></div>
-          <div class="field"><label for="imgsz">Bildgröße</label><input id="imgsz" name="imgsz" type="number" min="32" max="2048" step="32" value="640" required></div>
-          <div class="field"><label for="batch">Batch (-1 auto)</label><input id="batch" name="batch" type="number" min="-1" max="1024" value="8" required></div>
-          <div class="field"><label for="device">Gerät</label><input id="device" name="device" value="0" placeholder="0, cpu oder mps" required></div>
-          <div class="field"><label for="patience">Early-stop Geduld</label><input id="patience" name="patience" type="number" min="0" max="10000" value="20" required></div>
-          <div class="field"><label for="workers">Datenlader-Worker</label><input id="workers" name="workers" type="number" min="0" max="64" value="2" required></div>
-        </div>
-        <div class="train-controls"><button id="startTraining" type="submit">Training starten</button><button class="danger" id="stopTraining" type="button" disabled>Training stoppen</button><span class="run-state" id="runState">Noch kein Lauf</span></div>
-      </form>
+      <form id="trainForm"><div class="form-grid">
+        <div class="field" style="grid-column:span 2"><label for="data">Dataset YAML</label><input id="data" name="data" value="dataset.yaml" required></div>
+        <div class="field"><label for="model">Checkpoint</label><input id="model" name="model" value="yolov8n.pt" required></div>
+        <div class="field"><label for="epochs">Epochen</label><input id="epochs" name="epochs" type="number" min="1" max="10000" value="100" required></div>
+        <div class="field"><label for="imgsz">Bildgröße</label><input id="imgsz" name="imgsz" type="number" min="32" max="2048" step="32" value="640" required></div>
+        <div class="field"><label for="batch">Batch (-1 auto)</label><input id="batch" name="batch" type="number" min="-1" max="1024" value="8" required></div>
+        <div class="field"><label for="device">Gerät</label><input id="device" name="device" value="0" placeholder="0, cpu oder mps" required></div>
+        <div class="field"><label for="patience">Early-stop Geduld</label><input id="patience" name="patience" type="number" min="0" max="10000" value="20" required></div>
+        <div class="field"><label for="workers">Datenlader-Worker</label><input id="workers" name="workers" type="number" min="0" max="64" value="2" required></div>
+      </div><div class="train-controls"><button id="startTraining" type="submit">Training starten</button><button class="danger" id="stopTraining" type="button" disabled>Training stoppen</button><span id="runState" class="run-state">Noch kein Lauf</span></div></form>
       <p class="hint" id="trainingError"></p>
-      <div class="form-grid">
-        <div class="field"><label for="metricSelect">Graph-Metrik</label><select id="metricSelect"><option value="metrics/mAP50(B)">mAP50</option><option value="metrics/mAP50-95(B)">mAP50–95</option><option value="metrics/precision(B)">Precision</option><option value="metrics/recall(B)">Recall</option><option value="train/box_loss">Train Box Loss</option><option value="val/box_loss">Validation Box Loss</option><option value="train/cls_loss">Train Class Loss</option><option value="val/cls_loss">Validation Class Loss</option></select></div>
-      </div>
-      <div class="metric-summary" id="metricSummary"></div>
-      <div class="chart-wrap"><canvas id="chart" aria-label="Trainingsmetriken pro Epoche"></canvas></div>
+      <div class="form-grid"><div class="field"><label for="metricSelect">Graph-Metrik</label><select id="metricSelect"><option value="metrics/mAP50(B)">mAP50</option><option value="metrics/mAP50-95(B)">mAP50–95</option><option value="metrics/precision(B)">Precision</option><option value="metrics/recall(B)">Recall</option><option value="train/box_loss">Loss</option></select></div></div>
+      <div class="metric-summary" id="metricSummary"></div><div class="chart-wrap"><canvas id="chart" aria-label="Trainingsmetriken pro Epoche"></canvas></div>
       <h3>Trainingsausgabe</h3><pre id="logs">Hier erscheinen Status und letzte Trainingsmeldungen.</pre>
     </section>
   </main>
 <script>
-  const imageEl = document.getElementById('image'), canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
-  const stage = document.getElementById('stage'), empty = document.getElementById('empty'), message = document.getElementById('message');
-  const counter = document.getElementById('counter'), prevButton = document.getElementById('prev'), nextButton = document.getElementById('next');
-  const saveButton = document.getElementById('save'), undoButton = document.getElementById('undo');
-  let images = [], index = -1, boxes = [], dirty = false, dragging = null;
-
-  function setMessage(text) { message.textContent = text; }
-  function markDirty() { dirty = true; saveButton.textContent = 'Label speichern *'; }
-  function setClean() { dirty = false; saveButton.textContent = 'Label speichern'; }
-  async function api(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(await response.text() || response.statusText); return response.json(); }
-
-  async function loadImageList() {
-    try {
-      images = await api('/api/images'); empty.hidden = images.length !== 0; stage.hidden = images.length === 0;
-      prevButton.disabled = nextButton.disabled = saveButton.disabled = images.length === 0;
-      if (!images.length) { counter.textContent = '0 / 0'; setMessage('Lege Bilddateien in images/ und aktualisiere.'); return; }
-      index = 0; await showCurrent();
-    } catch (error) { setMessage('Bilderliste konnte nicht geladen werden: ' + error.message); }
-  }
-  async function showCurrent() {
-    if (dirty && !confirm('Änderungen verwerfen und das nächste Bild öffnen?')) return;
-    setClean(); dragging = null; const name = images[index]; counter.textContent = `${index + 1} / ${images.length} — ${name}`;
-    imageEl.onload = async () => { fitCanvas(); try { boxes = await api('/api/labels?image=' + encodeURIComponent(name)); draw(); setMessage('Bild geladen. Rahmen um jede Socke ziehen und Labels speichern.'); } catch (error) { boxes = []; draw(); setMessage('Label konnte nicht geladen werden: ' + error.message); } };
-    imageEl.onerror = () => setMessage('Bild konnte nicht geladen werden: ' + name);
-    imageEl.src = '/images/' + encodeURIComponent(name) + '?t=' + Date.now(); prevButton.disabled = index === 0; nextButton.disabled = index === images.length - 1;
-  }
-  function fitCanvas() { const rect = imageEl.getBoundingClientRect(), dpr = devicePixelRatio || 1; canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw(); }
-  function draw() {
-    if (!imageEl.naturalWidth) return;
-    const rect = imageEl.getBoundingClientRect(), width = rect.width, height = rect.height, sx = width / imageEl.naturalWidth, sy = height / imageEl.naturalHeight;
-    ctx.clearRect(0, 0, width, height); boxes.forEach((box, i) => drawBox(box, i, sx, sy));
-    if (dragging) { const x = Math.min(dragging.x, dragging.cx), y = Math.min(dragging.y, dragging.cy), w = Math.abs(dragging.cx - dragging.x), h = Math.abs(dragging.cy - dragging.y); ctx.fillStyle = 'rgba(255,190,40,.18)'; ctx.strokeStyle = '#ffae00'; ctx.lineWidth = 2; ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); }
-  }
-  function drawBox(box, i, sx, sy) { const x=(box.x-box.w/2)*imageEl.naturalWidth*sx, y=(box.y-box.h/2)*imageEl.naturalHeight*sy, w=box.w*imageEl.naturalWidth*sx, h=box.h*imageEl.naturalHeight*sy; ctx.fillStyle='rgba(38,129,70,.16)'; ctx.strokeStyle='#278145'; ctx.lineWidth=2; ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); const label='sock '+(i+1); ctx.font='600 13px system-ui'; const lw=ctx.measureText(label).width+10, ly=Math.max(0,y-22); ctx.fillStyle='#278145'; ctx.fillRect(x,ly,lw,22); ctx.fillStyle='#fff'; ctx.fillText(label,x+5,ly+15); }
-  function point(event) { const r=canvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(r.width,event.clientX-r.left)),y:Math.max(0,Math.min(r.height,event.clientY-r.top)),width:r.width,height:r.height}; }
-  function hitBox(p) { for(let i=boxes.length-1;i>=0;i--){const b=boxes[i],x1=(b.x-b.w/2)*p.width,x2=(b.x+b.w/2)*p.width,y1=(b.y-b.h/2)*p.height,y2=(b.y+b.h/2)*p.height;if(p.x>=x1&&p.x<=x2&&p.y>=y1&&p.y<=y2)return i;} return -1; }
-  canvas.addEventListener('pointerdown', event => { if(!imageEl.naturalWidth)return; const p=point(event),hit=hitBox(p); if(hit>=0){boxes.splice(hit,1);markDirty();draw();setMessage('Label gelöscht. Speichern nicht vergessen.');return;} dragging={x:p.x,y:p.y,cx:p.x,cy:p.y,width:p.width,height:p.height};canvas.setPointerCapture(event.pointerId);draw(); });
-  canvas.addEventListener('pointermove', event => {if(!dragging)return;const p=point(event);dragging.cx=p.x;dragging.cy=p.y;draw();});
-  function finishDrawing(){if(!dragging)return;const d=dragging;dragging=null;const x=Math.min(d.x,d.cx),y=Math.min(d.y,d.cy),w=Math.abs(d.cx-d.x),h=Math.abs(d.cy-d.y);if(w>=6&&h>=6){boxes.push({class:0,x:(x+w/2)/d.width,y:(y+h/2)/d.height,w:w/d.width,h:h/d.height});markDirty();setMessage(`Socke gelabelt (${boxes.length}). Speichern nicht vergessen.`);}draw();}
-  canvas.addEventListener('pointerup',finishDrawing);canvas.addEventListener('pointercancel',finishDrawing);
+  const imageEl=document.getElementById('image'),canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+  const stage=document.getElementById('stage'),empty=document.getElementById('empty'),message=document.getElementById('message');
+  const counter=document.getElementById('counter'),prevButton=document.getElementById('prev'),nextButton=document.getElementById('next'),saveButton=document.getElementById('save'),undoButton=document.getElementById('undo');
+  let images=[],index=-1,boxes=[],dirty=false,gesture=null;
+  const MIN_SIZE=6,HANDLE_RADIUS=12;
+  function setMessage(t){message.textContent=t;} function markDirty(){dirty=true;saveButton.textContent='Label speichern *';} function setClean(){dirty=false;saveButton.textContent='Label speichern';}
+  async function api(url,options){const response=await fetch(url,options);if(!response.ok)throw new Error(await response.text()||response.statusText);return response.json();}
+  async function loadImageList(){try{images=await api('/api/images');empty.hidden=images.length!==0;stage.hidden=images.length===0;prevButton.disabled=nextButton.disabled=saveButton.disabled=images.length===0;if(!images.length){counter.textContent='0 / 0';setMessage('Lege Bilddateien in images/ und aktualisiere.');return;}index=0;await showCurrent(true);}catch(error){setMessage('Bilderliste konnte nicht geladen werden: '+error.message);}}
+  async function showCurrent(force=false){if(dirty&&!force&&!confirm('Änderungen verwerfen und das nächste Bild öffnen?'))return;setClean();gesture=null;const name=images[index];counter.textContent=`${index+1} / ${images.length} — ${name}`;imageEl.onload=async()=>{fitCanvas();try{boxes=await api('/api/labels?image='+encodeURIComponent(name));draw();setMessage('Bild geladen. Labels zeichnen, verschieben oder an den Ecken in der Größe ändern.');}catch(error){setMessage('Labels konnten nicht geladen werden: '+error.message);}};imageEl.onerror=()=>setMessage('Bild konnte nicht geladen werden: '+name);imageEl.src='/images/'+encodeURIComponent(name)+'?t='+Date.now();prevButton.disabled=index===0;nextButton.disabled=index===images.length-1;}
+  function fitCanvas(){const r=imageEl.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!r.width||!r.height)return;canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);draw();}
+  function boxRect(box,p){return{x:(box.x-box.w/2)*p.width,y:(box.y-box.h/2)*p.height,w:box.w*p.width,h:box.h*p.height};}
+  function draw(){if(!imageEl.naturalWidth)return;const r=canvas.getBoundingClientRect(),sx=r.width/imageEl.naturalWidth,sy=r.height/imageEl.naturalHeight;ctx.clearRect(0,0,r.width,r.height);boxes.forEach((b,i)=>drawBox(b,i,sx,sy));if(gesture?.type==='create'){const x=Math.min(gesture.start.x,gesture.current.x),y=Math.min(gesture.start.y,gesture.current.y),w=Math.abs(gesture.current.x-gesture.start.x),h=Math.abs(gesture.current.y-gesture.start.y);ctx.fillStyle='rgba(255,190,40,.18)';ctx.strokeStyle='#ffae00';ctx.lineWidth=2;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);}}
+  function drawBox(box,i,sx,sy){const x=(box.x-box.w/2)*imageEl.naturalWidth*sx,y=(box.y-box.h/2)*imageEl.naturalHeight*sy,w=box.w*imageEl.naturalWidth*sx,h=box.h*imageEl.naturalHeight*sy;ctx.fillStyle='rgba(38,129,70,.16)';ctx.strokeStyle='#278145';ctx.lineWidth=2;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);const label='sock '+(i+1);ctx.font='600 13px system-ui';const lw=ctx.measureText(label).width+10,ly=Math.max(0,y-22);ctx.fillStyle='#278145';ctx.fillRect(x,ly,lw,22);ctx.fillStyle='#fff';ctx.fillText(label,x+5,ly+15);
+    // Large, high-contrast corner targets make resizing practical on touch screens.
+    for(const [hx,hy] of [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]){ctx.beginPath();ctx.arc(hx,hy,HANDLE_RADIUS,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#17652f';ctx.stroke();ctx.beginPath();ctx.arc(hx,hy,3,0,Math.PI*2);ctx.fillStyle='#17652f';ctx.fill();}}
+  function point(event){const r=canvas.getBoundingClientRect();return{x:Math.max(0,Math.min(r.width,event.clientX-r.left)),y:Math.max(0,Math.min(r.height,event.clientY-r.top)),width:r.width,height:r.height};}
+  function hitHandle(p){for(let i=boxes.length-1;i>=0;i--){const r=boxRect(boxes[i],p);for(const [name,x,y] of [['nw',r.x,r.y],['ne',r.x+r.w,r.y],['sw',r.x,r.y+r.h],['se',r.x+r.w,r.y+r.h]])if(Math.hypot(p.x-x,p.y-y)<=HANDLE_RADIUS+4)return{index:i,handle:name,rect:r};}return null;}
+  function hitBox(p){for(let i=boxes.length-1;i>=0;i--){const r=boxRect(boxes[i],p);if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h)return i;}return-1;}
+  function updateBoxFromEdges(box,left,top,right,bottom,p){left=Math.max(0,Math.min(p.width-MIN_SIZE,left));right=Math.max(left+MIN_SIZE,Math.min(p.width,right));top=Math.max(0,Math.min(p.height-MIN_SIZE,top));bottom=Math.max(top+MIN_SIZE,Math.min(p.height,bottom));box.x=(left+right)/(2*p.width);box.y=(top+bottom)/(2*p.height);box.w=(right-left)/p.width;box.h=(bottom-top)/p.height;}
+  canvas.addEventListener('pointerdown',event=>{if(!imageEl.naturalWidth)return;const p=point(event),handle=hitHandle(p);if(handle){const b=boxes[handle.index],r=handle.rect;gesture={type:'resize',index:handle.index,handle:handle.handle,left:r.x,top:r.y,right:r.x+r.w,bottom:r.y+r.h,pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;}const hit=hitBox(p);if(hit>=0){gesture={type:'move',index:hit,start:p,original:{...boxes[hit]},pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);event.preventDefault();return;}gesture={type:'create',start:p,current:p,pointerId:event.pointerId};canvas.setPointerCapture(event.pointerId);draw();});
+  canvas.addEventListener('pointermove',event=>{if(!gesture)return;const p=point(event);if(gesture.type==='create')gesture.current=p;else if(gesture.type==='move'){const g=gesture,b=boxes[g.index],dx=p.x-g.start.x,dy=p.y-g.start.y,r=boxRect(g.original,p);const left=Math.max(0,Math.min(p.width-r.w,r.x+dx)),top=Math.max(0,Math.min(p.height-r.h,r.y+dy));b.x=(left+r.w/2)/p.width;b.y=(top+r.h/2)/p.height;}else{const g=gesture,leftSide=g.handle.endsWith('w'),topSide=g.handle.startsWith('n');if(leftSide)g.left=p.x;else g.right=p.x;if(topSide)g.top=p.y;else g.bottom=p.y;const b=boxes[g.index];updateBoxFromEdges(b,g.left,g.top,g.right,g.bottom,p);}draw();});
+  function finishGesture(event){if(!gesture)return;const g=gesture;gesture=null;if(g.type==='create'){const p=point(event),x=Math.min(g.start.x,p.x),y=Math.min(g.start.y,p.y),w=Math.abs(p.x-g.start.x),h=Math.abs(p.y-g.start.y);if(w>=MIN_SIZE&&h>=MIN_SIZE){boxes.push({class:0,x:(x+w/2)/p.width,y:(y+h/2)/p.height,w:w/p.width,h:h/p.height});markDirty();setMessage(`Socke gelabelt (${boxes.length}). Speichern nicht vergessen.`);}}else{markDirty();setMessage(g.type==='resize'?'Labelgröße geändert. Speichern nicht vergessen.':'Label verschoben. Speichern nicht vergessen.');}draw();}
+  canvas.addEventListener('pointerup',finishGesture);canvas.addEventListener('pointercancel',finishGesture);
   async function saveLabels(){if(index<0||!dirty)return;saveButton.disabled=true;try{const result=await api('/api/labels',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:images[index],labels:boxes})});setClean();setMessage(`Gespeichert: ${result.count} Label(s).`);}catch(error){setMessage('Speichern fehlgeschlagen: '+error.message);}finally{saveButton.disabled=false;}}
-  saveButton.addEventListener('click',saveLabels);
-  async function move(delta){if(dirty&&!confirm('Änderungen verwerfen und wechseln?'))return;const target=Math.max(0,Math.min(images.length-1,index+delta));if(target===index)return;index=target;await showCurrent();}
+  saveButton.addEventListener('click',saveLabels);async function move(delta){if(dirty&&!confirm('Änderungen verwerfen und wechseln?'))return;const target=Math.max(0,Math.min(images.length-1,index+delta));if(target===index)return;index=target;await showCurrent(true);}
   prevButton.addEventListener('click',()=>move(-1));nextButton.addEventListener('click',()=>move(1));undoButton.addEventListener('click',()=>{if(!boxes.length)return;boxes.pop();markDirty();draw();setMessage('Letztes Label entfernt. Speichern nicht vergessen.');});
   window.addEventListener('resize',fitCanvas);window.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();saveLabels();}else if(event.key==='ArrowLeft')move(-1);else if(event.key==='ArrowRight')move(1);});window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
-
   const trainForm=document.getElementById('trainForm'),startButton=document.getElementById('startTraining'),stopButton=document.getElementById('stopTraining'),runState=document.getElementById('runState'),trainingError=document.getElementById('trainingError'),logsEl=document.getElementById('logs'),metricSelect=document.getElementById('metricSelect'),summary=document.getElementById('metricSummary'),chart=document.getElementById('chart');
-  let trainingRunning=false,lastLogText='';
-  trainForm.addEventListener('submit',async event=>{event.preventDefault();trainingError.textContent='';const fd=new FormData(trainForm);const config=Object.fromEntries(fd.entries());for(const key of ['epochs','imgsz','batch','patience','workers'])config[key]=Number(config[key]);startButton.disabled=true;try{await api('/api/training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});trainingError.textContent='';await refreshTraining();}catch(error){trainingError.textContent=error.message;startButton.disabled=false;}});
-  stopButton.addEventListener('click',async()=>{stopButton.disabled=true;try{await api('/api/training/stop',{method:'POST'});}catch(error){trainingError.textContent=error.message;}await refreshTraining();});
-  metricSelect.addEventListener('change',refreshMetrics);
-  async function refreshTraining(){try{const state=await api('/api/training');trainingRunning=state.running;runState.textContent=`${state.status||'Noch kein Lauf'}${state.started?' · '+new Date(state.started).toLocaleTimeString():''}`;startButton.disabled=state.running;stopButton.disabled=!state.running;if(state.error)trainingError.textContent=state.error;const text=(state.logs||[]).join('\n');if(text!==lastLogText){logsEl.textContent=text||'Noch keine Ausgabe.';logsEl.scrollTop=logsEl.scrollHeight;lastLogText=text;}await refreshMetrics();}catch(error){trainingError.textContent='Status konnte nicht geladen werden: '+error.message;}}
+  let trainingRunning=false;
+  trainForm.addEventListener('submit',async event=>{event.preventDefault();trainingError.textContent='';const config=Object.fromEntries(new FormData(trainForm).entries());for(const key of ['epochs','imgsz','batch','patience','workers'])config[key]=Number(config[key]);try{await api('/api/training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});await refreshTraining();}catch(error){trainingError.textContent=error.message;}});
+  stopButton.addEventListener('click',async()=>{stopButton.disabled=true;try{await api('/api/training/stop',{method:'POST'});}catch(error){trainingError.textContent=error.message;}await refreshTraining();});metricSelect.addEventListener('change',refreshMetrics);
+  async function refreshTraining(){try{const state=await api('/api/training');trainingRunning=state.running;runState.textContent=`${state.status||'Noch kein Lauf'}${state.started?' · '+new Date(state.started).toLocaleString():''}`;startButton.disabled=trainingRunning;stopButton.disabled=!trainingRunning;trainingError.textContent=state.error||'';const logs=(state.logs||[]).join('\n');if(logsEl.textContent!==logs){logsEl.textContent=logs;logsEl.scrollTop=logsEl.scrollHeight;}}catch(error){trainingError.textContent=error.message;}}
   async function refreshMetrics(){try{const data=await api('/api/metrics');drawChart(data.rows||[],metricSelect.value);showSummary(data.rows||[]);}catch(error){trainingError.textContent='Metriken konnten nicht geladen werden: '+error.message;}}
-  function showSummary(rows){summary.replaceChildren();if(!rows.length)return;const latest=rows[rows.length-1];for(const key of ['epoch','metrics/precision(B)','metrics/recall(B)','metrics/mAP50(B)','metrics/mAP50-95(B)','train/box_loss','val/box_loss']){if(latest[key]===undefined)continue;const chip=document.createElement('span');chip.className='metric-chip';chip.textContent=`${key}: ${latest[key].toFixed(key==='epoch'?0:4)}`;summary.append(chip);}}
-  function drawChart(rows,key){const rect=chart.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rect.width||!rect.height)return;chart.width=Math.round(rect.width*dpr);chart.height=Math.round(rect.height*dpr);const c=chart.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,rect.width,rect.height);const values=rows.map(row=>row[key]).filter(Number.isFinite);if(!values.length){c.fillStyle='#647064';c.font='14px system-ui';c.fillText(trainingRunning?'Graph erscheint nach der ersten Trainings-Epoche':'Noch keine Metriken vorhanden.',12,28);return;}const pad={l:52,r:14,t:18,b:34},w=rect.width-pad.l-pad.r,h=rect.height-pad.t-pad.b,min=Math.min(...values),max=Math.max(...values),range=max-min||Math.max(Math.abs(max)*.1,.01);c.strokeStyle='#dce3d8';c.fillStyle='#647064';c.lineWidth=1;c.font='11px system-ui';for(let i=0;i<5;i++){const y=pad.t+h*i/4;c.beginPath();c.moveTo(pad.l,y);c.lineTo(pad.l+w,y);c.stroke();c.fillText((max-range*i/4).toFixed(3),4,y+4);}c.fillText('Epoche',pad.l+w/2,rect.height-6);c.strokeStyle='#248347';c.lineWidth=2.5;c.beginPath();values.forEach((v,i)=>{const x=pad.l+(values.length===1?0:w*i/(values.length-1)),y=pad.t+h*(max-v)/range;if(i===0)c.moveTo(x,y);else c.lineTo(x,y);});c.stroke();c.fillStyle='#248347';values.forEach((v,i)=>{const x=pad.l+(values.length===1?0:w*i/(values.length-1)),y=pad.t+h*(max-v)/range;c.beginPath();c.arc(x,y,3,0,Math.PI*2);c.fill();});c.fillStyle='#455347';c.fillText(`${key} · ${values.length} Epoche(n)`,pad.l,pad.t+12);}
-  setInterval(()=>{if(trainingRunning)refreshTraining();},2000);window.addEventListener('resize',()=>{refreshMetrics();fitCanvas();});
-  loadImageList();refreshTraining();
+  function showSummary(rows){summary.replaceChildren();if(!rows.length)return;const latest=rows[rows.length-1];for(const key of ['epoch','metrics/precision(B)','metrics/recall(B)','metrics/mAP50(B)','metrics/mAP50-95(B)','train/box_loss'])if(latest[key]!==undefined){const chip=document.createElement('span');chip.className='metric-chip';chip.textContent=`${key}: ${Number(latest[key]).toFixed(4)}`;summary.append(chip);}}
+  function drawChart(rows,key){const r=chart.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!r.width||!r.height)return;chart.width=Math.round(r.width*dpr);chart.height=Math.round(r.height*dpr);const c=chart.getContext('2d');c.scale(dpr,dpr);c.clearRect(0,0,r.width,r.height);const points=rows.map((row,i)=>({x:Number(row.epoch??i),y:Number(row[key])})).filter(p=>Number.isFinite(p.y));if(!points.length){c.fillStyle='#647064';c.fillText('Noch keine Metriken verfügbar',12,24);return;}const min=Math.min(...points.map(p=>p.y)),max=Math.max(...points.map(p=>p.y)),range=max-min||1;c.strokeStyle='#278145';c.lineWidth=2;c.beginPath();points.forEach((p,i)=>{const x=12+(p.x/(Math.max(...points.map(v=>v.x))||1))*(r.width-24),y=r.height-12-((p.y-min)/range)*(r.height-24);i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();}
+  setInterval(()=>{if(trainingRunning)refreshTraining();},2000);window.addEventListener('resize',()=>{refreshMetrics();fitCanvas();});loadImageList();refreshTraining();refreshMetrics();
 </script>
 </body>
 </html>
