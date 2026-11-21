@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -35,14 +36,14 @@ type Label struct {
 }
 
 type TrainConfig struct {
-	Data    string `json:"data"`
-	Model   string `json:"model"`
-	Epochs  int    `json:"epochs"`
-	ImgSize int    `json:"imgsz"`
-	Batch   int    `json:"batch"`
-	Device  string `json:"device"`
-	Patience int   `json:"patience"`
-	Workers int    `json:"workers"`
+	Data     string `json:"data"`
+	Model    string `json:"model"`
+	Epochs   int    `json:"epochs"`
+	ImgSize  int    `json:"imgsz"`
+	Batch    int    `json:"batch"`
+	Device   string `json:"device"`
+	Patience int    `json:"patience"`
+	Workers  int    `json:"workers"`
 }
 
 type MetricPoint map[string]float64
@@ -66,7 +67,7 @@ type trainingState struct {
 	cancel   context.CancelFunc
 }
 
-var modelPattern = regexp.MustCompile(`^[A-Za-z0-9_./:\\-]+\.pt$`)
+var modelPattern = regexp.MustCompile(`^[A-Za-z0-9_./:\-]+\.pt$`)
 var devicePattern = regexp.MustCompile(`^(cpu|mps|[0-9]+(,[0-9]+)*)$`)
 
 func main() {
@@ -87,6 +88,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/images", app.handleImages)
 	mux.HandleFunc("/api/labels", app.handleLabels)
+	mux.HandleFunc("/api/dataset/split", app.handleDatasetSplit)
 	mux.HandleFunc("/api/training", app.handleTraining)
 	mux.HandleFunc("/api/training/stop", app.handleStopTraining)
 	mux.HandleFunc("/api/metrics", app.handleMetrics)
@@ -165,128 +167,143 @@ func (a *App) handleLabels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleDatasetSplit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { methodNotAllowed(w); return }
+	defer r.Body.Close()
+	var request struct { TrainPercent int `json:"trainPercent"` }
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil { http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest); return }
+	if err := ensureJSONEnd(decoder); err != nil { http.Error(w, "Invalid JSON body", http.StatusBadRequest); return }
+	if request.TrainPercent < 1 || request.TrainPercent > 99 { http.Error(w, "trainPercent must be between 1 and 99", http.StatusBadRequest); return }
+
+	entries, err := os.ReadDir(a.imagesDir)
+	if err != nil { http.Error(w, "Could not read images directory", http.StatusInternalServerError); return }
+	images := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && isImage(entry.Name()) { images = append(images, entry.Name()) }
+	}
+	if len(images) == 0 { http.Error(w, "No images found", http.StatusBadRequest); return }
+
+	rand.Shuffle(len(images), func(i, j int) { images[i], images[j] = images[j], images[i] })
+	trainCount := int(math.Round(float64(len(images)) * float64(request.TrainPercent) / 100))
+	if len(images) > 1 {
+		trainCount = int(math.Max(1, math.Min(float64(len(images)-1), float64(trainCount))))
+	}
+
+	datasetDir := filepath.Join(a.rootDir, "dataset")
+	if err := os.RemoveAll(datasetDir); err != nil { http.Error(w, "Could not reset dataset directory", http.StatusInternalServerError); return }
+	for _, dir := range []string{
+		filepath.Join(datasetDir, "images", "train"),
+		filepath.Join(datasetDir, "images", "val"),
+		filepath.Join(datasetDir, "labels", "train"),
+		filepath.Join(datasetDir, "labels", "val"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil { http.Error(w, "Could not create dataset directories", http.StatusInternalServerError); return }
+	}
+
+	for i, imageName := range images {
+		split := "val"
+		if i < trainCount { split = "train" }
+		if err := copyFile(filepath.Join(a.imagesDir, imageName), filepath.Join(datasetDir, "images", split, imageName)); err != nil {
+			http.Error(w, "Could not copy image: "+err.Error(), http.StatusInternalServerError); return
+		}
+		labelName := strings.TrimSuffix(imageName, filepath.Ext(imageName)) + ".txt"
+		sourceLabel := filepath.Join(a.labelsDir, labelName)
+		targetLabel := filepath.Join(datasetDir, "labels", split, labelName)
+		if _, err := os.Stat(sourceLabel); err == nil {
+			if err := copyFile(sourceLabel, targetLabel); err != nil { http.Error(w, "Could not copy label: "+err.Error(), http.StatusInternalServerError); return }
+		} else if !errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "Could not inspect label: "+err.Error(), http.StatusInternalServerError); return
+		}
+	}
+
+	yamlContent := "path: .\ntrain: images/train\nval: images/val\n\nnames:\n  0: sock\n"
+	if err := os.WriteFile(filepath.Join(datasetDir, "dataset.yaml"), []byte(yamlContent), 0644); err != nil {
+		http.Error(w, "Could not write dataset YAML", http.StatusInternalServerError); return
+	}
+	rootYAML := "path: dataset\ntrain: dataset/images/train\nval: dataset/images/val\n\nnames:\n  0: sock\n"
+	if err := os.WriteFile(filepath.Join(a.rootDir, "dataset.yaml"), []byte(rootYAML), 0644); err != nil {
+		http.Error(w, "Could not update root dataset YAML", http.StatusInternalServerError); return
+	}
+
+	writeJSON(w, map[string]any{"copied": len(images), "train": trainCount, "val": len(images) - trainCount, "datasetDir": datasetDir, "yaml": filepath.Join(datasetDir, "dataset.yaml")})
+}
+
+func copyFile(source, target string) error {
+	input, err := os.Open(source)
+	if err != nil { return err }
+	defer input.Close()
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil { return err }
+	_, copyErr := io.Copy(output, input)
+	closeErr := output.Close()
+	if copyErr != nil { return copyErr }
+	return closeErr
+}
+
 func (a *App) handleTraining(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		a.trainMu.Lock()
-		state := a.training
-		state.cancel = nil
-		if state.Logs == nil { state.Logs = []string{} }
-		a.trainMu.Unlock()
-		writeJSON(w, state)
+		a.trainMu.Lock(); state := a.training; state.cancel = nil; if state.Logs == nil { state.Logs = []string{} }; a.trainMu.Unlock(); writeJSON(w, state)
 	case http.MethodPost:
 		defer r.Body.Close()
 		var config TrainConfig
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
-		decoder.DisallowUnknownFields()
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)); decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&config); err != nil { http.Error(w, "Invalid training settings: "+err.Error(), http.StatusBadRequest); return }
 		if err := ensureJSONEnd(decoder); err != nil { http.Error(w, "Invalid JSON body", http.StatusBadRequest); return }
 		if err := a.validateTrainConfig(&config); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
-		yoloBin := os.Getenv("YOLO_BIN")
-		if yoloBin == "" { yoloBin = "yolo" }
-		if _, err := exec.LookPath(yoloBin); err != nil { http.Error(w, "Ultralytics CLI 'yolo' not found in PATH. Install it with: python -m pip install ultralytics", http.StatusPreconditionFailed); return }
-		a.trainMu.Lock()
-		if a.training.Running { a.trainMu.Unlock(); http.Error(w, "A training run is already active", http.StatusConflict); return }
-		ctx, cancel := context.WithCancel(context.Background())
-		runName := "sock-" + time.Now().Format("20060102-150405")
-		runDir := filepath.Join(a.rootDir, "runs", "detect", runName)
-		a.training = trainingState{Running: true, Status: "Starting", Logs: []string{}, RunDir: runDir, Started: time.Now(), cancel: cancel}
-		a.trainMu.Unlock()
-		go a.runTraining(ctx, cancel, yoloBin, config, runName, runDir)
-		writeJSON(w, map[string]any{"started": true, "run": runName})
+		yoloBin := os.Getenv("YOLO_BIN"); if yoloBin == "" { yoloBin = "yolo" }
+		if _, err := exec.LookPath(yoloBin); err != nil { http.Error(w, "Ultralytics CLI 'yolo' not found in PATH", http.StatusPreconditionFailed); return }
+		a.trainMu.Lock(); if a.training.Running { a.trainMu.Unlock(); http.Error(w, "A training run is already active", http.StatusConflict); return }
+		ctx, cancel := context.WithCancel(context.Background()); runName := "sock-" + time.Now().Format("20060102-150405"); runDir := filepath.Join(a.rootDir, "runs", "detect", runName)
+		a.training = trainingState{Running: true, Status: "Starting", Logs: []string{}, RunDir: runDir, Started: time.Now(), cancel: cancel}; a.trainMu.Unlock()
+		go a.runTraining(ctx, cancel, yoloBin, config, runName, runDir); writeJSON(w, map[string]any{"started": true, "run": runName})
 	default: methodNotAllowed(w)
 	}
 }
 
 func (a *App) validateTrainConfig(config *TrainConfig) error {
-	config.Data = strings.TrimSpace(config.Data)
-	config.Model = strings.TrimSpace(config.Model)
-	config.Device = strings.TrimSpace(config.Device)
+	config.Data = strings.TrimSpace(config.Data); config.Model = strings.TrimSpace(config.Model); config.Device = strings.TrimSpace(config.Device)
 	if config.Data == "" { return errors.New("Dataset YAML path is required") }
 	if !strings.EqualFold(filepath.Ext(config.Data), ".yaml") && !strings.EqualFold(filepath.Ext(config.Data), ".yml") { return errors.New("Dataset file must end in .yaml or .yml") }
 	if !filepath.IsAbs(config.Data) { config.Data = filepath.Join(a.rootDir, config.Data) }
 	if info, err := os.Stat(config.Data); err != nil || info.IsDir() { return errors.New("Dataset YAML file does not exist") }
 	if config.Model == "" { config.Model = "yolov8n.pt" }
-	if !modelPattern.MatchString(config.Model) { return errors.New("Model must be a .pt checkpoint path/name using only letters, numbers, /, _, ., :, or -") }
+	if !modelPattern.MatchString(config.Model) { return errors.New("Invalid model path") }
 	if config.Epochs < 1 || config.Epochs > 10000 { return errors.New("Epochs must be between 1 and 10000") }
 	if config.ImgSize < 32 || config.ImgSize > 2048 { return errors.New("Image size must be between 32 and 2048") }
 	if config.Batch < -1 || config.Batch > 1024 || config.Batch == 0 { return errors.New("Batch must be -1 or between 1 and 1024") }
 	if config.Device == "" { config.Device = "0" }
-	if !devicePattern.MatchString(config.Device) { return errors.New("Device must be cpu, mps, or a GPU ID such as 0 or 0,1") }
-	if config.Patience < 0 || config.Patience > 10000 { return errors.New("Patience must be between 0 and 10000") }
-	if config.Workers < 0 || config.Workers > 64 { return errors.New("Workers must be between 0 and 64") }
+	if !devicePattern.MatchString(config.Device) { return errors.New("Invalid device") }
+	if config.Patience < 0 || config.Patience > 10000 { return errors.New("Invalid patience") }
+	if config.Workers < 0 || config.Workers > 64 { return errors.New("Invalid workers") }
 	return nil
 }
 
 func (a *App) runTraining(ctx context.Context, cancel context.CancelFunc, yoloBin string, config TrainConfig, runName, runDir string) {
 	defer cancel()
-	args := []string{"detect", "train", "model=" + config.Model, "data=" + config.Data,
-		fmt.Sprintf("epochs=%d", config.Epochs), fmt.Sprintf("imgsz=%d", config.ImgSize),
-		fmt.Sprintf("batch=%d", config.Batch), "device=" + config.Device,
-		fmt.Sprintf("patience=%d", config.Patience), fmt.Sprintf("workers=%d", config.Workers),
-		"project=" + filepath.Join(a.rootDir, "runs", "detect"), "name=" + runName, "exist_ok=True"}
-	cmd := exec.CommandContext(ctx, yoloBin, args...)
-	cmd.Dir = a.rootDir
-	stdout, err := cmd.StdoutPipe()
-	if err != nil { a.finishTraining(err); return }
-	stderr, err := cmd.StderrPipe()
-	if err != nil { a.finishTraining(err); return }
+	args := []string{"detect", "train", "model=" + config.Model, "data=" + config.Data, fmt.Sprintf("epochs=%d", config.Epochs), fmt.Sprintf("imgsz=%d", config.ImgSize), fmt.Sprintf("batch=%d", config.Batch), "device=" + config.Device, fmt.Sprintf("patience=%d", config.Patience), fmt.Sprintf("workers=%d", config.Workers), "project=" + filepath.Join(a.rootDir, "runs", "detect"), "name=" + runName, "exist_ok=True"}
+	cmd := exec.CommandContext(ctx, yoloBin, args...); cmd.Dir = a.rootDir
+	stdout, err := cmd.StdoutPipe(); if err != nil { a.finishTraining(err); return }
+	stderr, err := cmd.StderrPipe(); if err != nil { a.finishTraining(err); return }
 	if err := cmd.Start(); err != nil { a.finishTraining(err); return }
-	a.appendLog("$ " + yoloBin + " " + strings.Join(args, " "))
-	a.setTrainingStatus("Training")
-	var readers sync.WaitGroup
-	readers.Add(2)
-	read := func(pipe io.Reader) {
-		defer readers.Done()
-		scanner := bufio.NewScanner(pipe)
-		scanner.Buffer(make([]byte, 4096), 1024*1024)
-		for scanner.Scan() { a.appendLog(scanner.Text()) }
-		if err := scanner.Err(); err != nil { a.appendLog("Output read error: " + err.Error()) }
-	}
-	go read(stdout)
-	go read(stderr)
-	err = cmd.Wait()
-	readers.Wait()
-	if err != nil {
-		if ctx.Err() != nil { a.finishTraining(nil) } else { a.finishTraining(err) }
-		return
-	}
-	a.trainMu.Lock()
-	a.training.Running = false
-	a.training.Status = "Completed"
-	a.training.Finished = time.Now()
-	a.training.cancel = nil
-	a.trainMu.Unlock()
+	a.appendLog("$ " + yoloBin + " " + strings.Join(args, " ")); a.setTrainingStatus("Training")
+	var readers sync.WaitGroup; readers.Add(2)
+	read := func(pipe io.Reader) { defer readers.Done(); scanner := bufio.NewScanner(pipe); scanner.Buffer(make([]byte, 4096), 1024*1024); for scanner.Scan() { a.appendLog(scanner.Text()) }; if err := scanner.Err(); err != nil { a.appendLog("Output read error: " + err.Error()) } }
+	go read(stdout); go read(stderr); err = cmd.Wait(); readers.Wait()
+	if err != nil { if ctx.Err() != nil { a.finishTraining(nil) } else { a.finishTraining(err) }; return }
+	a.trainMu.Lock(); a.training.Running = false; a.training.Status = "Completed"; a.training.Finished = time.Now(); a.training.cancel = nil; a.trainMu.Unlock()
 	a.appendLog("Training completed. Weights: " + filepath.Join(runDir, "weights", "best.pt"))
 }
 
-func (a *App) finishTraining(err error) {
-	a.trainMu.Lock()
-	defer a.trainMu.Unlock()
-	a.training.Running = false
-	a.training.Finished = time.Now()
-	a.training.cancel = nil
-	if err != nil { a.training.Status = "Failed"; a.training.Error = err.Error(); a.training.Logs = append(a.training.Logs, "Training failed: "+err.Error()) } else { a.training.Status = "Stopped"; a.training.Logs = append(a.training.Logs, "Training stopped.") }
-}
-
+func (a *App) finishTraining(err error) { a.trainMu.Lock(); defer a.trainMu.Unlock(); a.training.Running = false; a.training.Finished = time.Now(); a.training.cancel = nil; if err != nil { a.training.Status = "Failed"; a.training.Error = err.Error(); a.training.Logs = append(a.training.Logs, "Training failed: "+err.Error()) } else { a.training.Status = "Stopped" } }
 func (a *App) setTrainingStatus(status string) { a.trainMu.Lock(); a.training.Status = status; a.trainMu.Unlock() }
-
-func (a *App) appendLog(line string) {
-	a.trainMu.Lock()
-	defer a.trainMu.Unlock()
-	a.training.Logs = append(a.training.Logs, line)
-	if len(a.training.Logs) > 500 { a.training.Logs = append([]string(nil), a.training.Logs[len(a.training.Logs)-500:]...) }
-}
+func (a *App) appendLog(line string) { a.trainMu.Lock(); defer a.trainMu.Unlock(); a.training.Logs = append(a.training.Logs, line); if len(a.training.Logs) > 500 { a.training.Logs = append([]string(nil), a.training.Logs[len(a.training.Logs)-500:]...) } }
 
 func (a *App) handleStopTraining(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost { methodNotAllowed(w); return }
-	a.trainMu.Lock()
-	if !a.training.Running || a.training.cancel == nil { a.trainMu.Unlock(); http.Error(w, "No training run is active", http.StatusConflict); return }
-	a.training.Status = "Stopping"
-	cancel := a.training.cancel
-	a.trainMu.Unlock()
-	cancel()
-	writeJSON(w, map[string]bool{"stopping": true})
+	a.trainMu.Lock(); if !a.training.Running || a.training.cancel == nil { a.trainMu.Unlock(); http.Error(w, "No training run is active", http.StatusConflict); return }; a.training.Status = "Stopping"; cancel := a.training.cancel; a.trainMu.Unlock(); cancel(); writeJSON(w, map[string]bool{"stopping": true})
 }
 
 func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -306,17 +323,7 @@ func readMetrics(path string) (metricResponse, error) {
 	reader := csv.NewReader(file); reader.TrimLeadingSpace = true
 	headers, err := reader.Read(); if err != nil { return metricResponse{}, err }
 	response := metricResponse{Columns: headers, Rows: []MetricPoint{}}
-	for {
-		record, err := reader.Read()
-		if errors.Is(err, io.EOF) { break }
-		if err != nil { return metricResponse{}, err }
-		point := MetricPoint{}
-		for i, value := range record {
-			if i >= len(headers) { break }
-			if number, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil && !math.IsNaN(number) && !math.IsInf(number, 0) { point[strings.TrimSpace(headers[i])] = number }
-		}
-		if len(point) > 0 { response.Rows = append(response.Rows, point) }
-	}
+	for { record, err := reader.Read(); if errors.Is(err, io.EOF) { break }; if err != nil { return metricResponse{}, err }; point := MetricPoint{}; for i, value := range record { if i >= len(headers) { break }; if number, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil && !math.IsNaN(number) && !math.IsInf(number, 0) { point[strings.TrimSpace(headers[i])] = number } }; if len(point) > 0 { response.Rows = append(response.Rows, point) } }
 	return response, nil
 }
 
@@ -342,10 +349,7 @@ func (a *App) writeLabels(imageName string, labels []Label) error {
 	return os.WriteFile(filepath.Join(a.labelsDir, labelName), []byte(content.String()), 0644)
 }
 
-func safeImageName(name string) (string, bool) {
-	if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\\`) || !isImage(name) { return "", false }
-	return name, true
-}
+func safeImageName(name string) (string, bool) { if name == "" || name != filepath.Base(name) || strings.ContainsAny(name, `/\\`) || !isImage(name) { return "", false }; return name, true }
 func isImage(name string) bool { switch strings.ToLower(filepath.Ext(name)) { case ".jpg", ".jpeg", ".png", ".webp", ".bmp": return true; default: return false } }
 func finite01(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1 }
 func ensureJSONEnd(decoder *json.Decoder) error { var extra any; if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) { return errors.New("extra data") }; return nil }
